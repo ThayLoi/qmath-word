@@ -8,213 +8,119 @@ from pathlib import Path
 import extra_streamlit_components as stx
 import sys
 
-# --- CẤU HÌNH ĐƯỜNG DẪN ---
+# --- CẤU HÌNH HỆ THỐNG ---
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 try:
     from appword.services.pipeline import run_pipeline
 except ImportError as e:
-    st.error(f"Lỗi module: {e}")
-    st.stop()
+    st.error(f"Lỗi: {e}"); st.stop()
 
-# --- CẤU HÌNH TRANG ---
-st.set_page_config(
-    page_title="Word to Moodle",
-    page_icon="📝",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
+st.set_page_config(page_title="Word to Moodle", page_icon="📝", layout="wide", initial_sidebar_state="expanded")
 
-# --- CSS TỐI ƯU GIAO DIỆN (COMPACT) ---
+# --- CSS SIÊU GỌN ---
 st.markdown("""
 <style>
-    /* Thu gọn khoảng trắng thừa ở đầu trang */
-    .block-container {
-        padding-top: 1.5rem;
-        padding-bottom: 1rem;
-    }
-    /* Chỉnh lại tiêu đề cho gọn */
-    h1 {
-        font-size: 1.8rem !important;
-        margin-bottom: 0.5rem !important;
-    }
-    /* Nút bấm đẹp hơn */
-    div.stButton > button:first-child {
-        background-color: #0068c9; color: white; border-radius: 6px; font-weight: 600;
-    }
-    /* Thông báo thành công gọn hơn */
-    .stSuccess {
-        padding: 0.5rem;
-    }
+    /* Thu gọn lề trên cùng */
+    .block-container { padding-top: 1rem; padding-bottom: 2rem; }
+    /* Thu gọn Sidebar */
+    [data-testid="stSidebar"] { padding-top: 1rem; }
+    [data-testid="stSidebar"] .block-container { padding-top: 1rem; }
+    /* Chỉnh nút bấm nhỏ lại */
+    .stButton button { padding: 0.25rem 0.5rem; min-height: 0px; height: auto; }
+    /* Tiêu đề nhỏ lại */
+    h1 { font-size: 1.5rem !important; margin-bottom: 0px !important; }
+    /* Ẩn bớt khoảng trắng của các widget */
+    .stRadio { margin-top: -10px; margin-bottom: -10px; }
+    .stTextInput { margin-bottom: -10px; }
 </style>
 """, unsafe_allow_html=True)
 
-# --- KHỞI TẠO COOKIE ---
+# --- AUTH & COOKIE ---
 cookie_manager = stx.CookieManager()
 
-# --- AUTHENTICATION (GIỮ NGUYÊN) ---
-def check_authentication():
-    try:
-        allowed_emails = st.secrets["general"]["allowed_emails"]
-    except:
-        allowed_emails = [] 
-
+def check_auth():
+    try: allowed = st.secrets["general"]["allowed_emails"]
+    except: allowed = []
     if "user_email" in st.session_state: return True
-    time.sleep(0.1) 
-    saved_email = cookie_manager.get("user_email")
-    if saved_email and (not allowed_emails or saved_email in allowed_emails):
-        st.session_state["user_email"] = saved_email
-        return True
+    time.sleep(0.1)
+    saved = cookie_manager.get("user_email")
+    if saved and (not allowed or saved in allowed):
+        st.session_state["user_email"] = saved; return True
     return False
 
-def login_screen():
+if not check_auth():
     st.title("🔐 Đăng nhập")
-    c1, c2, c3 = st.columns([1, 2, 1])
+    c1, c2, c3 = st.columns([1,2,1])
     with c2:
-        email = st.text_input("Email:", placeholder="admin@school.edu.vn")
+        email = st.text_input("Email:", placeholder="admin@gmail.com")
         if st.button("Truy cập", use_container_width=True):
-            try:
-                allowed = st.secrets["general"]["allowed_emails"]
-                if email.strip() in allowed:
-                    st.session_state["user_email"] = email.strip()
-                    cookie_manager.set("user_email", email.strip(), key="email_ck")
-                    st.rerun()
-                else:
-                    st.error("Không có quyền truy cập.")
-            except:
-                st.session_state["user_email"] = email; st.rerun()
-
-if not check_authentication():
-    login_screen()
+            allowed = st.secrets["general"].get("allowed_emails", [])
+            if not allowed or email.strip() in allowed:
+                st.session_state["user_email"] = email.strip()
+                cookie_manager.set("user_email", email.strip(), key="ck_mail")
+                st.rerun()
+            else: st.error("Không có quyền.")
     st.stop()
 
-user_email = st.session_state.get("user_email", "User")
-
-# ================= GIAO DIỆN CHÍNH =================
-
-# --- SIDEBAR (CHỨA CẤU HÌNH & USER) ---
+# ================= SIDEBAR (SIÊU GỌN) =================
 with st.sidebar:
-    st.caption(f"👤 {user_email}")
-    if st.button("Đăng xuất", key="logout_btn", use_container_width=True):
-        cookie_manager.delete("user_email")
-        st.session_state.clear()
-        st.rerun()
+    # Header: User + Logout (Dùng 2 cột để gọn)
+    c_user, c_out = st.columns([4, 1])
+    c_user.caption(f"👤 {st.session_state['user_email']}")
+    if c_out.button("🚪", help="Đăng xuất"):
+        cookie_manager.delete("user_email"); st.session_state.clear(); st.rerun()
     
     st.divider()
-    st.header("⚙️ Cấu hình hệ thống")
     
-    # 1. API KEY
-    with st.expander("🔑 ImgBB API Key", expanded=True):
-        cookie_key = cookie_manager.get("my_imgbb_key")
-        api_key_input = st.text_input("Nhập Key:", value=cookie_key if cookie_key else "", type="password")
-        c_save, c_del = st.columns(2)
-        if c_save.button("Lưu"):
-            cookie_manager.set("my_imgbb_key", api_key_input, key="save_api")
-            st.toast("Đã lưu API Key!")
-            time.sleep(1)
-        if c_del.button("Xóa"):
-            cookie_manager.delete("my_imgbb_key")
-            st.rerun()
-
-    # 2. MAPPING ID
-    with st.expander("📂 File ID Mapping", expanded=True):
-        repo_path = os.path.join(os.getcwd(), "ID")
-        defaults = [f for f in os.listdir(repo_path) if f.endswith(".xlsx")] if os.path.exists(repo_path) else []
-        
-        map_mode = st.radio("Nguồn:", ["Mặc định", "Upload"], horizontal=True, label_visibility="collapsed")
-        
-        final_mapping_source = None
-        if map_mode == "Mặc định" and defaults:
-            sel = st.selectbox("Chọn file:", defaults)
-            if sel: final_mapping_source = os.path.join(repo_path, sel)
-        else:
-            up_map = st.file_uploader("File Excel:", type=['xlsx'])
-            if up_map: final_mapping_source = up_map
-
-    st.info("ℹ️ Tải file Word lên màn hình chính để xử lý.")
-
-# --- MAIN SCREEN (TẬP TRUNG XỬ LÝ) ---
-st.title("📝 Chuyển đổi Word ➡️ Moodle XML")
-
-# Khu vực Upload File (Làm to và rõ)
-upload_container = st.container()
-with upload_container:
-    uploaded_word_files = st.file_uploader(
-        "Kéo thả hoặc chọn file đề trắc nghiệm (.docx)", 
-        type=['docx'], 
-        accept_multiple_files=True
-    )
-
-# Khu vực Action & Result
-if uploaded_word_files:
-    # Hiển thị số lượng file đã chọn
-    st.write(f"📁 **Đã nhận {len(uploaded_word_files)} file.** Nhấn nút bên dưới để bắt đầu.")
+    # 1. API Key (Gộp Input và Button trên 1 dòng ảo)
+    st.markdown("**🔑 API Key ImgBB**")
+    cur_key = cookie_manager.get("my_imgbb_key", "")
+    api_key = st.text_input("Key", value=cur_key, type="password", label_visibility="collapsed", placeholder="Nhập API Key...")
     
-    # Nút bấm to, rõ ràng
-    if st.button("🚀 BẮT ĐẦU XỬ LÝ NGAY", type="primary", use_container_width=True):
+    # Nút Lưu/Xóa nằm ngang
+    b1, b2 = st.columns(2)
+    if b1.button("💾 Lưu", use_container_width=True):
+        cookie_manager.set("my_imgbb_key", api_key, key="save_k"); st.toast("Đã lưu!")
+    if b2.button("🗑️ Xóa", use_container_width=True):
+        cookie_manager.delete("my_imgbb_key"); st.rerun()
+
+    st.divider()
+
+    # 2. Mapping ID
+    st.markdown("**📂 File ID Mapping**")
+    repo_path = os.path.join(os.getcwd(), "ID")
+    defaults = [f for f in os.listdir(repo_path) if f.endswith(".xlsx")] if os.path.exists(repo_path) else []
+    
+    # Radio nằm ngang
+    map_mode = st.radio("Nguồn", ["Mặc định", "Upload"], horizontal=True, label_visibility="collapsed")
+    
+    final_map = None
+    if map_mode == "Mặc định":
+        if defaults:
+            sel = st.selectbox("Chọn file", defaults, label_visibility="collapsed")
+            final_map = os.path.join(repo_path, sel)
+        else: st.warning("Không có file mặc định.")
+    else:
+        up = st.file_uploader("Excel", type=['xlsx'], label_visibility="collapsed")
+        if up: final_map = up
+
+# ================= MAIN SCREEN =================
+st.title("📝 Chuyển đổi Word ➡️ Moodle")
+
+# Upload (Container to rõ)
+with st.container():
+    uploaded_files = st.file_uploader("Kéo thả file .docx vào đây", type=['docx'], accept_multiple_files=True)
+
+if uploaded_files:
+    # Nút bấm to màu xanh
+    if st.button(f"🚀 XỬ LÝ {len(uploaded_files)} FILE NGAY", type="primary", use_container_width=True):
         
-        # --- LOGIC XỬ LÝ (GIỮ NGUYÊN) ---
-        run_api_key = api_key_input
-        if not run_api_key:
-            try: run_api_key = st.secrets["general"]["default_imgbb_key"]
-            except: pass
+        # Check config
+        run_key = api_key if api_key else st.secrets["general"].get("default_imgbb_key")
+        if not final_map: st.warning("⚠️ Chọn ID Mapping bên trái trước!"); st.stop()
         
-        if not final_mapping_source:
-            st.warning("⚠️ Chưa chọn file ID Mapping (trong Sidebar).")
-        
-        with tempfile.TemporaryDirectory() as temp_dir:
-            base = Path(temp_dir)
-            in_d, out_d, map_d = base/"input", base/"output", base/"mapping"
-            for d in [in_d, out_d, map_d]: d.mkdir()
-
-            # Status log gọn gàng
-            status_box = st.status("Dang xử lý...", expanded=True)
-            
-            # 1. Setup Mapping
-            real_map_arg = None
-            if final_mapping_source:
-                if isinstance(final_mapping_source, str):
-                    shutil.copy(final_mapping_source, map_d / os.path.basename(final_mapping_source))
-                else:
-                    with open(map_d / final_mapping_source.name, "wb") as f: f.write(final_mapping_source.getbuffer())
-                real_map_arg = str(map_d)
-
-            # 2. Save Docs
-            for uf in uploaded_word_files:
-                with open(in_d / uf.name, "wb") as f: f.write(uf.getbuffer())
-            
-            # 3. Run Pipeline
-            prog = status_box.progress(0)
-            def on_prog(c, t, m): prog.progress(min(int((c/t)*100), 100)); status_box.write(f"⚙️ {m}")
-
-            try:
-                run_pipeline(str(in_d), str(out_d), run_api_key, on_prog, real_map_arg)
-                status_box.update(label="✅ Thành công!", state="complete", expanded=False)
-                
-                # 4. Zip & Download
-                zip_name = "ket_qua_moodle.zip"
-                zip_f = base / zip_name
-                with zipfile.ZipFile(zip_f, 'w', zipfile.ZIP_DEFLATED) as z:
-                    for r, _, fs in os.walk(out_d):
-                        for file in fs: z.write(os.path.join(r, file), os.path.relpath(os.path.join(r, file), out_d))
-                
-                with open(zip_f, "rb") as f:
-                    st.download_button(
-                        label="📥 TẢI KẾT QUẢ VỀ MÁY",
-                        data=f,
-                        file_name=zip_name,
-                        mime="application/zip",
-                        type="primary",
-                        use_container_width=True
-                    )
-                
-                # Show list file
-                with st.expander("Xem danh sách file chi tiết"):
-                    st.json(os.listdir(out_d))
-
-            except Exception as e:
-                status_box.update(label="❌ Thất bại", state="error")
-                st.error(f"Lỗi: {str(e)}")
-
-else:
-    # Khi chưa upload file thì hiện hướng dẫn ngắn
-    st.info("👈 Vui lòng kiểm tra cấu hình bên thanh trái, sau đó upload file để bắt đầu.")
+        # Process
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            i_dir, o_dir, m_dir = base/"in", base/"out", base/"map"
+            f
