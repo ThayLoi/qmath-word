@@ -269,4 +269,49 @@ with col_process:
                     # st.write(f"Log: {msg}") # Uncomment để debug
 
                 try:
-                    status_box.write("⚙️ Đang chạy pip
+                    status_box.write("⚙️ Đang chạy pipeline (Tách ảnh, Upload, Tạo XML)...")
+                    
+                    run_pipeline(
+                        input_folder=str(input_dir),
+                        output_folder=str(output_dir),
+                        api_key=run_api_key,
+                        progress_cb=update_progress_ui,
+                        mapping_dir=real_mapping_path_arg
+                    )
+                    
+                    status_box.update(label="✅ Xử lý hoàn tất!", state="complete", expanded=False)
+                    st.success("Đã chuyển đổi thành công!")
+
+                    # 4. ZIP RESULT
+                    zip_filename = "ket_qua_moodle.zip"
+                    zip_path = base_path / zip_filename
+                    with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+                        for root, dirs, files in os.walk(output_dir):
+                            for file in files:
+                                p = os.path.join(root, file)
+                                arcname = os.path.relpath(p, output_dir)
+                                zipf.write(p, arcname)
+
+                    # 5. DOWNLOAD BUTTON
+                    with open(zip_path, "rb") as f:
+                        st.download_button(
+                            label="📥 TẢI XUỐNG KẾT QUẢ (.ZIP)",
+                            data=f,
+                            file_name=zip_filename,
+                            mime="application/zip",
+                            type="primary",
+                            use_container_width=True
+                        )
+                    
+                    # 6. HIỂN THỊ KẾT QUẢ SƠ BỘ
+                    st.markdown("### 📄 Danh sách file kết quả:")
+                    result_files = []
+                    for root, dirs, files in os.walk(output_dir):
+                        for file in files:
+                            result_files.append(file)
+                    st.json(result_files)
+
+                except Exception as e:
+                    status_box.update(label="❌ Có lỗi xảy ra!", state="error")
+                    st.error(f"Chi tiết lỗi: {str(e)}")
+                    # st.exception(e) # Hiện traceback đầy đủ nếu cần debug
